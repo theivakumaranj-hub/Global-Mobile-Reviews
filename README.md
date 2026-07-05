@@ -3,6 +3,9 @@
 ---
 
 ## 📑 Topic: Project Overview
+The smartphone industry generates an enormous volume of structured commercial data daily, spanning technical hardware configurations, fluid retail price indexes, user star ratings, and consumer reviews.However, because this transactional information originates from multi-regional distributors, it arrives highly unorganized, making direct strategic analysis difficult.This project establishes a complete end-to-end data engineering and unsupervised machine learning pipeline.The system cleans raw marketplace streams, executes exploratory trend analysis, applies unsupervised K-Means Clustering to segment inventory into distinct consumer market tiers, and deploys an interactive, price-locked, feature-aware Cosine Similarity recommendation engine via Streamlit.
+
+![Dashboard Screenshot](UI.png)
 
 ### 📋 Subtopic: Core Context
 * **Market Status:** The global smartphone industry generates an enormous volume of structured commercial data daily, spanning technical hardware configurations, fluid retail price indexes, user star ratings, and consumer reviews.
