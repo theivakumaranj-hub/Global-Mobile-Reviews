@@ -2,21 +2,26 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
+import os
 from sklearn.preprocessing import LabelEncoder, StandardScaler
 from sklearn.cluster import KMeans
 from sklearn.metrics.pairwise import cosine_similarity
 
-# Set up professional page layout
+# Set up professional page layout at the absolute top
 st.set_page_config(page_title="Global Mobile Analytics & Recommendation System", layout="wide")
 
 st.title("📱 Mobile Product Segmentation & Recommendation System")
 st.markdown("### End-to-End Machine Learning Pipeline | Developed with Python & Streamlit")
 st.markdown("---")
 
-# ==========================================
-# CACHED DATA & ML PIPELINE
-# ==========================================
-@st.cache_data
+# 1. DIRECT FILE CHECK: Intercept missing dataset errors before they cause a server crash
+if not os.path.exists('global_mobile_reviews.csv'):
+    st.error("🚨 **Critical File Error: Dataset Missing!**")
+    st.markdown(f"The system cannot locate `global_mobile_reviews.csv` in your active directory: `{os.getcwd()}`")
+    st.write("Please confirm that the dataset CSV file is spelled correctly and sits in the exact same folder as this script.")
+    st.stop()
+
+# 2. CACHE PURGED: Stripped @st.cache_data to force raw errors to bubble up instantly
 def load_and_process_data():
     df = pd.read_csv('global_mobile_reviews.csv')
     df = df.drop_duplicates().dropna()
@@ -34,7 +39,6 @@ def load_and_process_data():
     scaler = StandardScaler()
     df_scaled = scaler.fit_transform(df[features_to_scale])
     
-    # 4 Clusters: Budget, Lower Mid, Upper Mid, Premium (Market Quartile Strategy)
     kmeans = KMeans(n_clusters=4, random_state=42)
     df['cluster'] = kmeans.fit_predict(df_scaled)
     
@@ -47,7 +51,6 @@ def load_and_process_data():
     }
     df['segment_name'] = df['cluster'].map(tier_mapping)
     
-    # Clean Product Catalog
     product_catalog = df.groupby(['brand', 'model'])[features_to_scale].mean().reset_index()
     segments = df.groupby(['brand', 'model'])['segment_name'].agg(lambda x: x.mode()[0]).reset_index()
     product_catalog = pd.merge(product_catalog, segments, on=['brand', 'model'])
@@ -56,7 +59,12 @@ def load_and_process_data():
     
     return df, product_catalog, catalog_scaled, features_to_scale
 
-df, product_catalog, catalog_scaled, features_to_scale = load_and_process_data()
+# Execute pipeline safely with a local error catch
+try:
+    df, product_catalog, catalog_scaled, features_to_scale = load_and_process_data()
+except Exception as pipeline_error:
+    st.error(f"🚨 **Data Processing Exception Matrix:** {pipeline_error}")
+    st.stop()
 
 # Sidebar Information
 st.sidebar.header("📊 Dataset Summary Metrics")
@@ -65,9 +73,15 @@ st.sidebar.metric("Unique Phone Models", f"{product_catalog.shape[0]}")
 st.sidebar.markdown("---")
 st.sidebar.success("✅ **Plotly Integration Active**")
 st.sidebar.success("✅ **Price-Locked Recommendations Active**")
-st.sidebar.success("✅ **Feature-Aware Suggestions Active**")
+st.sidebar.success("✅ **Smart Consumer Controls Active**")
 
-tab1, tab2, tab3 = st.tabs(["🎯 Market Segmentation Insights", "📈 Exploratory Visualizations", "🤖 Intelligent Recommendation System"])
+# Interactive Tab Navigation
+tab1, tab2, tab3, tab4 = st.tabs([
+    "🎯 Market Segmentation Insights", 
+    "📈 Exploratory Visualizations", 
+    "🤖 Intelligent Recommendation System",
+    "💡 Smart Buyer's Assistant"
+])
 
 # ==========================================
 # TAB 1: MARKET SEGMENTATION (PLOTLY)
@@ -86,7 +100,6 @@ with tab1:
     segment_metrics['Average_Rating'] = segment_metrics['Average_Rating'].map("{:,.2f} / 5.0".format)
     st.table(segment_metrics)
     
-    # Interactive Plotly Scatter Plot
     fig_cluster = px.scatter(
         df, x='price_usd', y='rating', color='segment_name', 
         hover_data=['brand'], opacity=0.6,
@@ -146,29 +159,21 @@ with tab3:
         target_data = product_catalog.iloc[target_idx]
         target_tier = target_data['segment_name']
         
-        # 1. PRICE LOCKING: Filter catalog to only include phones in the exact same market tier
         tier_mask = product_catalog['segment_name'] == target_tier
         filtered_catalog = product_catalog[tier_mask].copy()
-        
-        # Get the new indices for our filtered dataset
         filtered_indices = filtered_catalog.index.tolist()
         
-        # Generate vectors based only on the filtered subset
         filtered_vectors = catalog_scaled[filtered_indices]
         target_vector = catalog_scaled[target_idx].reshape(1, -1)
         
-        # 2. CALCULATE SIMILARITY
         similarity_scores = cosine_similarity(target_vector, filtered_vectors).flatten()
-        
-        # Sort and get top 5 (ignoring the target phone itself which will be 100%)
         top_5_relative_idx = np.argsort(similarity_scores)[::-1]
         
         final_recommendations = []
-        
         for rel_idx in top_5_relative_idx:
             actual_idx = filtered_indices[rel_idx]
             if actual_idx == target_idx:
-                continue # Skip the exact same phone
+                continue
             
             if len(final_recommendations) >= 5:
                 break
@@ -176,7 +181,6 @@ with tab3:
             rec_data = product_catalog.iloc[actual_idx]
             match_pct = similarity_scores[rel_idx] * 100
             
-            # 3. FEATURE ADVANTAGE LOGIC (Why buy this?)
             advantages = []
             if rec_data['camera_rating'] > target_data['camera_rating']:
                 advantages.append("📸 Better Camera")
@@ -202,3 +206,63 @@ with tab3:
             st.dataframe(recs_df, use_container_width=True)
         else:
             st.warning("No other phones found in this specific price tier.")
+
+# ==========================================
+# TAB 4: SMART BUYER'S ASSISTANT
+# ==========================================
+with tab4:
+    st.header("💡 Smart Buyer's Value Optimizer")
+    st.write("Input your budget ceiling and choose your priority feature to instantly extract the highest-performing models.")
+    
+    min_b = int(product_catalog['price_usd'].min())
+    max_b = int(product_catalog['price_usd'].max())
+    if min_b >= max_b:
+        max_b = min_b + 100
+    mid_b = int((min_b + max_b) / 2)
+    
+    col_input1, col_input2 = st.columns(2)
+    with col_input1:
+        max_budget = st.slider(
+            "Select Your Maximum Budget (USD):", 
+            min_value=min_b, 
+            max_value=max_b, 
+            value=mid_b, 
+            step=25
+        )
+    with col_input2:
+        priority_feature = st.selectbox(
+            "Select Your Priority Hardware Focus:",
+            options=['battery_life_rating', 'camera_rating', 'performance_rating', 'design_rating', 'display_rating'],
+            format_func=lambda x: x.replace('_', ' ').title()
+        )
+        
+    filtered_buyer_df = product_catalog[product_catalog['price_usd'] <= max_budget].copy()
+    
+    if not filtered_buyer_df.empty:
+        top_matches = filtered_buyer_df.sort_values(by=[priority_feature, 'rating'], ascending=False).head(5)
+        
+        fig_buyer = px.bar(
+            top_matches,
+            x=priority_feature,
+            y='model',
+            color='price_usd',
+            orientation='h',
+            title=f"Top Value Models Under ${max_budget} Optimizing {priority_feature.replace('_', ' ').title()}",
+            labels={'model': 'Phone Model', priority_feature: 'Hardware Rating', 'price_usd': 'Cost (USD)'},
+            color_continuous_scale='Viridis'
+        )
+        st.plotly_chart(fig_buyer, use_container_width=True)
+        
+        st.subheader("📊 Specifications Breakdown for Top Value Picks")
+        display_buyer_df = top_matches.copy().rename(columns={
+            'brand': 'Brand', 'model': 'Model Name', 'price_usd': 'Price (USD)', 
+            'rating': 'Overall Rating', priority_feature: priority_feature.replace('_', ' ').title()
+        })
+        
+        display_buyer_df['Price (USD)'] = display_buyer_df['Price (USD)'].map("${:,.2f}".format)
+        display_buyer_df['Overall Rating'] = display_buyer_df['Overall Rating'].map("{:,.2f} / 5.0".format)
+        
+        show_cols = ['Brand', 'Model Name', 'Price (USD)', 'Overall Rating', priority_feature.replace('_', ' ').title(), 'segment_name']
+        st.dataframe(display_buyer_df[show_cols], use_container_width=True)
+    else:
+        st.warning("No unique phone models detected below your selected budget ceiling. Try increasing the slider value.")
